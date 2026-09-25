@@ -6,6 +6,20 @@ export interface Pairing {
 }
 
 const KEY = 'sidequest.pairing';
+const CLIENT_KEY = 'waitflip.client';
+
+/** Stable id for this browser so two phones both count on the shared chart. */
+export function getClientId(): string {
+  try {
+    const existing = globalThis.localStorage?.getItem(CLIENT_KEY);
+    if (existing) return existing;
+    const id = `wf-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
+    globalThis.localStorage?.setItem(CLIENT_KEY, id);
+    return id;
+  } catch {
+    return 'device';
+  }
+}
 
 export async function loadPairing(): Promise<Pairing | null> {
   try {

@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "Sidequest",
-    "slug": "sidequest",
-    "scheme": "sidequest",
-    "version": "0.1.0",
+    "name": "Wait Flip",
+    "slug": "wait-flip",
+    "scheme": "waitflip",
+    "version": "0.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
-    "backgroundColor": "#0f1115",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#4ec0ca",
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
@@ -16,7 +16,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0f1115",
+        "backgroundColor": "#4ec0ca",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -33,7 +33,7 @@
         {
           "image": "./assets/splash-icon.png",
           "resizeMode": "contain",
-          "backgroundColor": "#0f1115"
+          "backgroundColor": "#4ec0ca"
         }
       ],
       [

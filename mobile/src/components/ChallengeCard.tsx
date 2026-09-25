@@ -1,107 +1,69 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { PublicChallenge, PublicRunState, WsClientMessage } from '../../../shared/events';
-import { colors, radius, spacing } from '../theme';
-import { Body, Button, Label } from './ui';
-import { TapReflexGame } from './TapReflexGame';
+import { getClientId } from '../storage';
+import { colors, pixel, radius, spacing } from '../theme';
 
 interface Props {
   run: PublicRunState;
-  quizResult: { runId: string; correct: boolean } | null;
+  quizResult: { runId: string; correct: boolean; answerIndex?: number } | null;
   send: (msg: WsClientMessage) => void;
+  onFinished: () => void;
 }
 
-export function ChallengeCard({ run, quizResult, send }: Props) {
+export function ChallengeCard({ run, quizResult, send, onFinished }: Props) {
   const challenge = run.challenge;
-  const done = run.status === 'done';
-
   if (!challenge) {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator color={colors.accent} />
-        <Body muted>Picking your sidequest…</Body>
+        <ActivityIndicator color={colors.ink} />
+        <Text style={styles.loadingText}>Coining a challenge</Text>
       </View>
     );
   }
-  if (challenge.kind === 'physical') return <Physical run={run} challenge={challenge} send={send} done={done} />;
-  if (challenge.kind === 'quiz') return <Quiz run={run} challenge={challenge} send={send} result={quizResult} />;
-  return (
-    <View style={styles.block}>
-      <Label>Game</Label>
-      <Body muted>{challenge.motivation}</Body>
-      <TapReflexGame paused={done} />
-    </View>
-  );
+  if (challenge.kind === 'physical') {
+    return <Physical run={run} challenge={challenge} send={send} onFinished={onFinished} />;
+  }
+  if (challenge.kind === 'quiz') {
+    return <Quiz run={run} challenge={challenge} send={send} result={quizResult} onFinished={onFinished} />;
+  }
+  return null;
 }
 
 function Physical({
   run,
   challenge,
   send,
-  done,
+  onFinished,
 }: {
   run: PublicRunState;
   challenge: Extract<PublicChallenge, { kind: 'physical' }>;
   send: Props['send'];
-  done: boolean;
+  onFinished: () => void;
 }) {
-  const [count, setCount] = useState(0);
-  const [reported, setReported] = useState(false);
-  const isTimed = challenge.unit === 'seconds';
-  const [elapsed, setElapsed] = useState(0);
-  const [timing, setTiming] = useState(false);
-
-  useEffect(() => {
-    if (!timing || done) return;
-    const t = setInterval(() => setElapsed((e) => e + 1), 1000);
-    return () => clearInterval(t);
-  }, [timing, done]);
-
-  const progress = isTimed ? elapsed : count;
-  const finished = progress >= challenge.reps;
-
-  useEffect(() => {
-    if (finished && !reported) {
-      setReported(true);
-      send({ type: 'physical:done', runId: run.runId, reps: challenge.reps });
-    }
-  }, [finished, reported, run.runId, challenge.reps, send]);
+  const [done, setDone] = useState(false);
+  const finish = () => {
+    if (done) return;
+    setDone(true);
+    send({ type: 'physical:done', runId: run.runId, reps: challenge.reps, clientId: getClientId() });
+    onFinished();
+  };
 
   return (
     <View style={styles.block}>
-      <Label>Move</Label>
+      <Text testID="challenge-kind" style={styles.kind}>
+        physical
+      </Text>
+      <Text style={styles.kicker}>Move</Text>
       <Text style={styles.big}>
         {challenge.reps}
-        <Text style={styles.unit}> {isTimed ? 's' : 'x'}</Text>
+        {challenge.unit === 'seconds' ? 's' : 'x'}
       </Text>
       <Text style={styles.exercise}>{challenge.exercise}</Text>
-      <Body muted>{challenge.motivation}</Body>
-
-      {finished ? (
-        <Text style={styles.finished}>Done. Reps logged.</Text>
-      ) : isTimed ? (
-        <View style={styles.row}>
-          <Text style={styles.counter}>
-            {elapsed}/{challenge.reps}s
-          </Text>
-          <Button label={timing ? 'Pause' : elapsed ? 'Resume' : 'Start timer'} onPress={() => setTiming((t) => !t)} />
-        </View>
-      ) : (
-        <View style={styles.row}>
-          <Text style={styles.counter}>
-            {count}/{challenge.reps}
-          </Text>
-          <Pressable
-            onPress={() => setCount((c) => Math.min(challenge.reps, c + 1))}
-            style={({ pressed }) => [styles.tap, pressed && { opacity: 0.7 }]}
-          >
-            <Text style={styles.tapText}>+1</Text>
-          </Pressable>
-          <Pressable onPress={() => setCount((c) => Math.min(challenge.reps, c + 5))} style={styles.tapSmall}>
-            <Text style={styles.tapSmallText}>+5</Text>
-          </Pressable>
-        </View>
-      )}
+      <Text style={styles.body}>{challenge.motivation}</Text>
+      <Pressable testID="challenge-done" onPress={finish} disabled={done} style={styles.done}>
+        <Text style={styles.doneText}>{done ? 'Logged' : 'Done'}</Text>
+      </Pressable>
     </View>
   );
 }
@@ -111,40 +73,47 @@ function Quiz({
   challenge,
   send,
   result,
+  onFinished,
 }: {
   run: PublicRunState;
   challenge: Extract<PublicChallenge, { kind: 'quiz' }>;
   send: Props['send'];
   result: Props['quizResult'];
+  onFinished: () => void;
 }) {
   const [picked, setPicked] = useState<number | null>(null);
-  const revealed = run.status === 'done' && typeof run.quizAnswerIndex === 'number';
-  const answerIndex = revealed ? run.quizAnswerIndex : undefined;
-  const answered = picked !== null;
-  const myResult = result && result.runId === run.runId ? result.correct : null;
+  const mine = result && result.runId === run.runId ? result : null;
+  const fromAnswer = mine && typeof mine.answerIndex === 'number' ? mine.answerIndex : undefined;
+  const fromStop = run.status === 'done' && typeof run.quizAnswerIndex === 'number' ? run.quizAnswerIndex : undefined;
+  const revealIndex = fromAnswer ?? fromStop;
+  const show = revealIndex !== undefined;
 
   return (
     <View style={styles.block}>
-      <Label>Quiz</Label>
+      <Text testID="challenge-kind" style={styles.kind}>
+        quiz
+      </Text>
+      <Text style={styles.kicker}>Trivia</Text>
       <Text style={styles.question}>{challenge.question}</Text>
       <View style={{ gap: spacing.sm }}>
         {challenge.options.map((opt, i) => {
           const isPicked = picked === i;
-          const isAnswer = answerIndex === i;
+          const isAnswer = revealIndex === i;
           return (
             <Pressable
               key={i}
-              disabled={answered}
+              testID={`option-${i}`}
+              disabled={picked !== null || run.status === 'done'}
               onPress={() => {
                 setPicked(i);
-                send({ type: 'quiz:answer', runId: run.runId, answerIndex: i });
+                send({ type: 'quiz:answer', runId: run.runId, answerIndex: i, clientId: getClientId() });
+                onFinished();
               }}
               style={[
                 styles.option,
-                isPicked && styles.optionPicked,
-                isPicked && myResult === true && styles.optionRight,
-                isPicked && myResult === false && styles.optionWrong,
-                revealed && isAnswer && styles.optionRight,
+                isPicked && !show && styles.optionPicked,
+                show && isAnswer && styles.optionRight,
+                show && isPicked && !isAnswer && styles.optionWrong,
               ]}
             >
               <Text style={styles.optionText}>{opt}</Text>
@@ -152,55 +121,43 @@ function Quiz({
           );
         })}
       </View>
-      {answered && myResult !== null && (
-        <Text style={[styles.verdict, { color: myResult ? colors.success : colors.danger }]}>
-          {myResult ? 'Correct.' : 'Not quite.'}
-          {revealed ? '' : ' Explanation lands when the agent finishes.'}
-        </Text>
-      )}
-      {revealed && run.quizExplanation ? <Body muted>{run.quizExplanation}</Body> : null}
-      {!answered && run.status === 'done' && <Body muted>Agent finished before you answered. Next time.</Body>}
+      {show && run.quizExplanation ? <Text style={styles.body}>{run.quizExplanation}</Text> : null}
+      {picked === null && run.status === 'done' ? (
+        <Text style={styles.body}>The agent finished first. The answer is lit.</Text>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  loading: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.lg },
+  loading: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.md },
+  loadingText: { fontFamily: pixel, fontSize: 10, color: colors.ink, lineHeight: 18 },
   block: { gap: spacing.sm },
-  big: { color: colors.text, fontSize: 64, fontWeight: '800', lineHeight: 70 },
-  unit: { color: colors.muted, fontSize: 28, fontWeight: '600' },
-  exercise: { color: colors.text, fontSize: 22, fontWeight: '600' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.sm },
-  counter: { color: colors.text, fontSize: 22, fontWeight: '700', minWidth: 80 },
-  tap: {
-    flex: 1,
+  kind: { position: 'absolute', width: 1, height: 1, opacity: 0 },
+  kicker: { fontFamily: pixel, fontSize: 10, color: colors.muted, lineHeight: 18 },
+  big: { fontFamily: pixel, fontSize: 28, color: colors.ink, lineHeight: 40 },
+  exercise: { fontFamily: pixel, fontSize: 14, color: colors.ink, lineHeight: 24 },
+  question: { fontFamily: pixel, fontSize: 12, color: colors.ink, lineHeight: 22 },
+  body: { fontFamily: pixel, fontSize: 9, color: colors.muted, lineHeight: 16 },
+  done: {
+    marginTop: spacing.sm,
     backgroundColor: colors.accent,
-    borderRadius: radius.md,
-    paddingVertical: 18,
+    borderWidth: 4,
+    borderColor: colors.ink,
+    paddingVertical: 14,
     alignItems: 'center',
+    boxShadow: '4px 4px 0 #1b1208',
   },
-  tapText: { color: '#fff', fontSize: 22, fontWeight: '800' },
-  tapSmall: {
-    backgroundColor: colors.cardAlt,
-    borderRadius: radius.md,
-    paddingVertical: 18,
-    paddingHorizontal: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  tapSmallText: { color: colors.text, fontWeight: '700' },
-  finished: { color: colors.success, fontWeight: '700', marginTop: spacing.sm },
-  question: { color: colors.text, fontSize: 20, fontWeight: '600', lineHeight: 26 },
+  doneText: { fontFamily: pixel, fontSize: 14, color: colors.ink, lineHeight: 22 },
   option: {
-    backgroundColor: colors.cardAlt,
+    backgroundColor: '#fff6d8',
     borderRadius: radius.md,
     padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: 4,
+    borderColor: colors.ink,
   },
-  optionPicked: { borderColor: colors.accent },
-  optionRight: { borderColor: colors.success, backgroundColor: '#14352a' },
-  optionWrong: { borderColor: colors.danger, backgroundColor: '#3a1f1f' },
-  optionText: { color: colors.text, fontSize: 16 },
-  verdict: { fontWeight: '700' },
+  optionPicked: { backgroundColor: colors.accent },
+  optionRight: { backgroundColor: colors.correct, borderColor: colors.ink },
+  optionWrong: { backgroundColor: colors.wrong, borderColor: colors.ink },
+  optionText: { fontFamily: pixel, fontSize: 10, color: colors.ink, lineHeight: 18 },
 });
