@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      { "command": "./hooks/sidequest.sh beforeSubmitPrompt", "timeout": 5 }
+    ],
+    "postToolUse": [
+      { "command": "./hooks/sidequest.sh postToolUse", "timeout": 5 }
+    ],
+    "afterFileEdit": [
+      { "command": "./hooks/sidequest.sh afterFileEdit", "timeout": 5 }
+    ],
+    "afterAgentThought": [
+      { "command": "./hooks/sidequest.sh afterAgentThought", "timeout": 5 }
+    ],
+    "stop": [
+      { "command": "./hooks/sidequest.sh stop", "timeout": 5 }
+    ]
+  }
+}
