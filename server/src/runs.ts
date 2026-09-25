@@ -14,7 +14,7 @@ const MIN_PREDICTION_SECONDS = 30;
 const MAX_PREDICTION_SECONDS = 900;
 const PREDICTOR_WINDOW = 10;
 /** Only every Nth agent thought is summarised to keep Grok traffic low. */
-export const THOUGHT_SUMMARY_EVERY = 5;
+export const THOUGHT_SUMMARY_EVERY = 3;
 
 /** Content hooks the run manager calls out to; all are optional and async. */
 export interface ContentProvider {
