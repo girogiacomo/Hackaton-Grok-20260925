@@ -27,7 +27,7 @@ flowchart LR
 
 ## Quick start
 
-Requirements: Node 22.9+, `curl` and `jq` on the machine running Cursor, a phone with [Expo Go](https://expo.dev/go) on the same Wi-Fi.
+Requirements: Node 22.9+ (`node -v`; the relay's `npm start` uses `--env-file-if-exists`), `curl` and `jq` on the machine running Cursor (`sudo apt install jq` / `brew install jq`), and a phone with [Expo Go](https://expo.dev/go) from the Play Store / App Store on the **same Wi-Fi** as the computer. No Expo account is needed. Everything the app uses (camera, haptics, local notifications, AsyncStorage) is bundled in Expo Go, so no dev build or APK is required.
 
 ### 1. Relay
 
@@ -39,6 +39,8 @@ npm start
 ```
 
 The relay prints a QR code, its LAN URL (e.g. `http://192.168.1.20:4747`) and a 6-digit pairing code. `GET /pair-qr` serves the same QR as a web page. Set `PAIR_CODE=123456` in `.env` to keep the code stable across restarts.
+
+The URL is the first non-loopback IPv4 of the machine. If it is not the address your phone can reach (VPN, Docker/VM, several adapters), set `PUBLIC_URL=http://<your-wifi-ip>:4747` in `.env`; find the IP with `ip -4 addr` / `ipconfig`. Check from the phone's browser: `http://<ip>:4747/health` must return `{"ok":true,...}` before pairing.
 
 ### 2. Cursor hook
 
@@ -59,7 +61,7 @@ npm install
 npx expo start
 ```
 
-Open the project in Expo Go, tap **Scan QR code** and point it at the relay's QR (or type the address and code). Pick a challenge mode on the home screen:
+Metro prints its own QR. On Android open **Expo Go** and use its **Scan QR code** button; on iOS use the Camera app. The Sidequest pair screen appears after the bundle loads. Tap **Scan QR code**, allow the camera, and point it at the *relay's* QR (the one from `npm start` in `server/`), or type the address and code. Pick a challenge mode on the home screen:
 
 - **Move**: exercise from a fixed list, reps scaled to about two thirds of the predicted wait. Grok only writes the one-liner.
 - **Quiz**: one Grok multiple-choice question derived from the prompt and project; the answer and explanation are revealed when the agent stops.

@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, SafeAreaView, StatusBar, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { colors } from './src/theme';
 import { clearPairing, loadPairing, savePairing, type Pairing } from './src/storage';
 import { useRelay } from './src/useRelay';
@@ -54,10 +56,12 @@ export default function App() {
   }
 
   return (
-    <SafeAreaView style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
-      {screen}
-    </SafeAreaView>
+    <SafeAreaProvider>
+      <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
+        <StatusBar style="light" />
+        {screen}
+      </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 
