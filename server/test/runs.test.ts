@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Challenge, HookEvent, RunState } from '../../shared/events.ts';
 import { MemoryStore } from '../src/db.ts';
-import { RunManager, predictSeconds, DEFAULT_PREDICTION_SECONDS, THOUGHT_SUMMARY_EVERY } from '../src/runs.ts';
+import { RunManager, predictSeconds, saneTimestamp, DEFAULT_PREDICTION_SECONDS, THOUGHT_SUMMARY_EVERY } from '../src/runs.ts';
 import type { ContentProvider } from '../src/runs.ts';
 import { scaleExercise, EXERCISES } from '../src/challenges.ts';
 
@@ -36,6 +36,14 @@ function ev(event: HookEvent['event'], payload: Record<string, unknown> = {}, ti
 }
 
 const tick = () => new Promise((r) => setImmediate(r));
+
+test('saneTimestamp keeps real hook clocks and replaces junk', () => {
+  const now = 1_790_000_000_000;
+  assert.equal(saneTimestamp(now - 5_000, now), now - 5_000);
+  assert.equal(saneTimestamp(1, now), now);
+  assert.equal(saneTimestamp(undefined, now), now);
+  assert.equal(saneTimestamp(Number.NaN, now), now);
+});
 
 test('predictSeconds uses clamped median with a default', () => {
   assert.equal(predictSeconds([]), DEFAULT_PREDICTION_SECONDS);

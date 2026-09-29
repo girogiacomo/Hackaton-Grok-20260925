@@ -24,6 +24,18 @@ export interface Store {
   removeDevice(token: string): void;
   getSetting(key: string): string | undefined;
   setSetting(key: string, value: string): void;
+  addCompletion(day: string, kind: 'physical' | 'trivia', clientId: string, key: string): boolean;
+  today(day: string): { physical: number; trivia: number };
+}
+
+/** Calendar day in Italy, so "today" matches the phone in the room. */
+export function todayKey(now = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Rome',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
 }
 
 export class SqliteStore implements Store {
@@ -56,6 +68,14 @@ export class SqliteStore implements Store {
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS completions (
+        key TEXT PRIMARY KEY,
+        day TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        client_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS completions_day_idx ON completions(day);
     `);
   }
 
@@ -154,6 +174,27 @@ export class SqliteStore implements Store {
       .prepare('INSERT OR REPLACE INTO settings(key, value) VALUES (?, ?)')
       .run(key, value);
   }
+
+  addCompletion(day: string, kind: 'physical' | 'trivia', clientId: string, key: string): boolean {
+    const result = this.db
+      .prepare('INSERT OR IGNORE INTO completions(key, day, kind, client_id, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(key, day, kind, clientId, Date.now());
+    return result.changes > 0;
+  }
+
+  today(day: string): { physical: number; trivia: number } {
+    const rows = this.db
+      .prepare<[string], { kind: string; n: number }>(
+        'SELECT kind, COUNT(*) AS n FROM completions WHERE day = ? GROUP BY kind',
+      )
+      .all(day);
+    const board = { physical: 0, trivia: 0 };
+    for (const row of rows) {
+      if (row.kind === 'physical') board.physical = row.n;
+      if (row.kind === 'trivia') board.trivia = row.n;
+    }
+    return board;
+  }
 }
 
 /** In-memory store for tests. */
@@ -164,6 +205,7 @@ export class MemoryStore implements Store {
   private quizAnswered = 0;
   private deviceSet = new Set<string>();
   private settings = new Map<string, string>();
+  private completions: { day: string; kind: 'physical' | 'trivia'; clientId: string; key: string }[] = [];
 
   recentDurations(project: string, limit: number): number[] {
     return this.runs
@@ -207,5 +249,17 @@ export class MemoryStore implements Store {
   }
   setSetting(key: string, value: string): void {
     this.settings.set(key, value);
+  }
+  addCompletion(day: string, kind: 'physical' | 'trivia', clientId: string, key: string): boolean {
+    if (this.completions.some((c) => c.key === key)) return false;
+    this.completions.push({ day, kind, clientId, key });
+    return true;
+  }
+  today(day: string): { physical: number; trivia: number } {
+    const rows = this.completions.filter((c) => c.day === day);
+    return {
+      physical: rows.filter((r) => r.kind === 'physical').length,
+      trivia: rows.filter((r) => r.kind === 'trivia').length,
+    };
   }
 }

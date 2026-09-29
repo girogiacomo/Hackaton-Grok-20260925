@@ -5,6 +5,7 @@ import type {
   ChallengeMode,
   PublicRunState,
   Stats,
+  TodayBoard,
   WsClientMessage,
 } from '../../shared/events';
 import { notifyLocal } from './notifications';
@@ -13,26 +14,29 @@ import { wsUrl, type Pairing } from './storage';
 export type ConnectionStatus = 'connecting' | 'open' | 'closed' | 'rejected';
 
 type ServerMessage =
-  | { type: 'hello'; run: PublicRunState | null; stats: Stats; mode?: ChallengeMode }
+  | { type: 'hello'; run: PublicRunState | null; stats: Stats; mode?: ChallengeMode; today?: TodayBoard }
   | { type: 'run:start'; run: PublicRunState }
   | { type: 'run:progress'; run: PublicRunState }
   | { type: 'run:done'; run: PublicRunState; stats: Stats }
   | { type: 'stats'; stats: Stats }
   | { type: 'mode'; mode: ChallengeMode }
-  | { type: 'quiz:result'; runId: string; correct: boolean };
+  | { type: 'today'; today: TodayBoard }
+  | { type: 'quiz:result'; runId: string; correct: boolean; answerIndex?: number };
 
 export interface RelayState {
   status: ConnectionStatus;
   run: PublicRunState | null;
   stats: Stats | null;
   mode: ChallengeMode;
-  quizResult: { runId: string; correct: boolean } | null;
+  quizResult: { runId: string; correct: boolean; answerIndex?: number } | null;
+  today: TodayBoard;
   send: (msg: WsClientMessage) => void;
   /** Clears a finished run from the screen. */
   dismissRun: () => void;
 }
 
 const EMPTY_STATS: Stats = { runs: 0, minutesReclaimed: 0, repsDone: 0, quizzesRight: 0, quizzesAnswered: 0 };
+const EMPTY_TODAY: TodayBoard = { day: '', physical: 0, trivia: 0 };
 
 function describeStart(run: PublicRunState): string {
   const c = run.challenge;
@@ -47,7 +51,9 @@ export function useRelay(pairing: Pairing | null): RelayState {
   const [run, setRun] = useState<PublicRunState | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [mode, setMode] = useState<ChallengeMode>('mixed');
-  const [quizResult, setQuizResult] = useState<{ runId: string; correct: boolean } | null>(null);
+  const [quizResult, setQuizResult] = useState<{ runId: string; correct: boolean; answerIndex?: number } | null>(null);
+  const [today, setToday] = useState<TodayBoard>(EMPTY_TODAY);
+  const seqRef = useRef<number | undefined>(undefined);
   const wsRef = useRef<WebSocket | null>(null);
   const retryRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -81,16 +87,23 @@ export function useRelay(pairing: Pairing | null): RelayState {
         const background = AppState.currentState !== 'active';
         switch (msg.type) {
           case 'hello':
+            seqRef.current = msg.run?.challengeSeq;
             setRun(msg.run);
             setStats(msg.stats ?? EMPTY_STATS);
             if (msg.mode) setMode(msg.mode);
+            if (msg.today) setToday(msg.today);
             break;
           case 'run:start':
+            seqRef.current = msg.run.challengeSeq;
             setRun(msg.run);
             setQuizResult(null);
             void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             break;
           case 'run:progress':
+            if (seqRef.current !== msg.run.challengeSeq) {
+              seqRef.current = msg.run.challengeSeq;
+              setQuizResult(null);
+            }
             setRun(msg.run);
             // Notify once the challenge is known, so the banner says what to do.
             if (msg.run.challenge && startNotifiedRef.current !== msg.run.runId) {
@@ -112,8 +125,11 @@ export function useRelay(pairing: Pairing | null): RelayState {
           case 'mode':
             setMode(msg.mode);
             break;
+          case 'today':
+            setToday(msg.today);
+            break;
           case 'quiz:result':
-            setQuizResult({ runId: msg.runId, correct: msg.correct });
+            setQuizResult({ runId: msg.runId, correct: msg.correct, answerIndex: msg.answerIndex });
             void Haptics.notificationAsync(
               msg.correct ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Error,
             );
@@ -166,5 +182,5 @@ export function useRelay(pairing: Pairing | null): RelayState {
 
   const dismissRun = useCallback(() => setRun(null), []);
 
-  return { status, run, stats, mode, quizResult, send, dismissRun };
+  return { status, run, stats, mode, quizResult, today, send, dismissRun };
 }

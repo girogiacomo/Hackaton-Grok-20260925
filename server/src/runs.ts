@@ -6,8 +6,9 @@ import type {
   HookEvent,
   RunState,
   Stats,
+  TodayBoard,
 } from '../../shared/events.ts';
-import type { Store } from './db.ts';
+import { todayKey, type Store } from './db.ts';
 
 export const DEFAULT_PREDICTION_SECONDS = 90;
 const MIN_PREDICTION_SECONDS = 30;
@@ -30,6 +31,13 @@ export interface RunManagerEvents {
 }
 
 /** Rolling median of the last N completed runs of a project, clamped. */
+/** Hook clocks are epoch milliseconds. A bogus stamp must not poison the ETA. */
+export function saneTimestamp(ts: unknown, now = Date.now()): number {
+  if (typeof ts !== 'number' || !Number.isFinite(ts)) return now;
+  if (Math.abs(ts - now) > 86_400_000) return now;
+  return ts;
+}
+
 export function predictSeconds(durations: number[]): number {
   const usable = durations.filter((d) => Number.isFinite(d) && d > 0);
   if (usable.length === 0) return DEFAULT_PREDICTION_SECONDS;
@@ -120,14 +128,34 @@ export class RunManager extends EventEmitter<RunManagerEvents> {
     this.run = run;
     this.thoughts = [];
     this.thoughtCount = 0;
+    this.beginToss(run);
     this.emit('start', run);
+  }
 
-    const mode = this.mode;
+  /** Another coin toss during the current wait. The face is random. */
+  flip(): void {
+    if (!this.run) return;
+    this.beginToss(this.run);
+    this.emit('progress', this.run);
+  }
+
+  today(): TodayBoard {
+    const day = todayKey();
+    return { day, ...this.store.today(day) };
+  }
+
+  private beginToss(run: RunState): void {
+    const face: 'physical' | 'quiz' = Math.random() < 0.5 ? 'physical' : 'quiz';
+    run.coin = face;
+    run.challenge = undefined;
+    run.challengeSeq = (run.challengeSeq ?? 0) + 1;
+    const seq = run.challengeSeq;
     void this.content
-      .challenge(run, mode)
+      .challenge(run, face)
       .then((challenge) => {
-        if (this.run?.runId !== run.runId) return;
+        if (this.run?.runId !== run.runId || run.challengeSeq !== seq) return;
         run.challenge = challenge;
+        if (challenge.kind === 'physical' || challenge.kind === 'quiz') run.coin = challenge.kind;
         this.emit('progress', run);
       })
       .catch(() => undefined);
@@ -197,17 +225,26 @@ export class RunManager extends EventEmitter<RunManagerEvents> {
   }
 
   /** Phone reports a quiz answer; returns whether it was right. */
-  answerQuiz(runId: string, answerIndex: number): boolean | undefined {
+  answerQuiz(runId: string, answerIndex: number, clientId = 'anonymous'): boolean | undefined {
     const run = this.run;
     if (!run || run.runId !== runId || run.challenge?.kind !== 'quiz') return undefined;
     const correct = run.challenge.answerIndex === answerIndex;
     this.store.addQuizResult(correct);
+    this.noteCompletion('trivia', clientId);
     return correct;
   }
 
   /** Phone reports completed reps for a physical challenge. */
-  completePhysical(runId: string, reps: number): void {
+  completePhysical(runId: string, reps: number, clientId = 'anonymous'): void {
     if (!this.run || this.run.runId !== runId) return;
     if (Number.isFinite(reps) && reps > 0) this.store.addReps(Math.round(reps));
+    this.noteCompletion('physical', clientId);
+  }
+
+  private noteCompletion(kind: 'physical' | 'trivia', clientId: string): void {
+    const run = this.run;
+    if (!run) return;
+    const id = clientId || 'anonymous';
+    this.store.addCompletion(todayKey(), kind, id, `${run.runId}:${run.challengeSeq ?? 0}:${id}:${kind}`);
   }
 }

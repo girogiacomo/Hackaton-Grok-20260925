@@ -71,6 +71,16 @@ export interface RunState {
   doneSummary?: string;
   quizAnswerIndex?: number;
   quizExplanation?: string;
+  /** Coin face for the current toss. The person does not choose it. */
+  coin?: 'physical' | 'quiz';
+  /** Increments every toss so the phone can replay the flip. */
+  challengeSeq?: number;
+}
+
+export interface TodayBoard {
+  day: string;
+  physical: number;
+  trivia: number;
 }
 
 export interface Stats {
@@ -82,19 +92,25 @@ export interface Stats {
 }
 
 export type WsMessage =
-  | { type: 'hello'; run: RunState | null; stats: Stats }
+  | { type: 'hello'; run: RunState | null; stats: Stats; today?: TodayBoard }
   | { type: 'run:start'; run: RunState }
   | { type: 'run:progress'; run: RunState }
   | { type: 'run:done'; run: RunState; stats: Stats }
-  | { type: 'stats'; stats: Stats };
+  | { type: 'stats'; stats: Stats }
+  | { type: 'today'; today: TodayBoard }
+  | { type: 'quiz:result'; runId: string; correct: boolean; answerIndex?: number };
 
 /** Phone -> server over WS. */
 export type WsClientMessage =
-  | { type: 'quiz:answer'; runId: string; answerIndex: number }
-  | { type: 'physical:done'; runId: string; reps: number }
+  | { type: 'quiz:answer'; runId: string; answerIndex: number; clientId?: string }
+  | { type: 'physical:done'; runId: string; reps: number; clientId?: string }
+  | { type: 'flip'; clientId?: string }
   | { type: 'mode'; mode: ChallengeMode };
 
 /** Quiz challenge as sent to the phone while the run is live (answer withheld). */
-export type PublicQuizChallenge = Omit<QuizChallenge, 'answerIndex'> & { answerIndex?: number };
+export type PublicQuizChallenge = Omit<QuizChallenge, 'answerIndex' | 'explanation'> & {
+  answerIndex?: number;
+  explanation?: string;
+};
 export type PublicChallenge = PhysicalChallenge | GameChallenge | PublicQuizChallenge;
 export type PublicRunState = Omit<RunState, 'challenge'> & { challenge?: PublicChallenge };

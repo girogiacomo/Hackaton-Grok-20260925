@@ -1,107 +1,74 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { PublicChallenge, PublicRunState, WsClientMessage } from '../../../shared/events';
-import { colors, radius, spacing } from '../theme';
-import { Body, Button, Label } from './ui';
-import { TapReflexGame } from './TapReflexGame';
+import { getClientId, type Look } from '../storage';
+import { colors, modernFont, pixel, spacing } from '../theme';
 
 interface Props {
   run: PublicRunState;
-  quizResult: { runId: string; correct: boolean } | null;
+  quizResult: { runId: string; correct: boolean; answerIndex?: number } | null;
   send: (msg: WsClientMessage) => void;
+  onFinished: () => void;
+  look: Look;
 }
 
-export function ChallengeCard({ run, quizResult, send }: Props) {
+export function ChallengeCard({ run, quizResult, send, onFinished, look }: Props) {
   const challenge = run.challenge;
-  const done = run.status === 'done';
-
+  const s = look === 'modern' ? modern : classic;
   if (!challenge) {
     return (
-      <View style={styles.loading}>
-        <ActivityIndicator color={colors.accent} />
-        <Body muted>Picking your sidequest…</Body>
+      <View style={s.loading}>
+        <ActivityIndicator color={colors.ink} />
+        <Text style={s.loadingText}>Coining a challenge</Text>
       </View>
     );
   }
-  if (challenge.kind === 'physical') return <Physical run={run} challenge={challenge} send={send} done={done} />;
-  if (challenge.kind === 'quiz') return <Quiz run={run} challenge={challenge} send={send} result={quizResult} />;
-  return (
-    <View style={styles.block}>
-      <Label>Game</Label>
-      <Body muted>{challenge.motivation}</Body>
-      <TapReflexGame paused={done} />
-    </View>
-  );
+  if (challenge.kind === 'physical') {
+    return <Physical run={run} challenge={challenge} send={send} onFinished={onFinished} look={look} />;
+  }
+  if (challenge.kind === 'quiz') {
+    return <Quiz run={run} challenge={challenge} send={send} result={quizResult} onFinished={onFinished} look={look} />;
+  }
+  return null;
 }
 
 function Physical({
   run,
   challenge,
   send,
-  done,
+  onFinished,
+  look,
 }: {
   run: PublicRunState;
   challenge: Extract<PublicChallenge, { kind: 'physical' }>;
   send: Props['send'];
-  done: boolean;
+  onFinished: () => void;
+  look: Look;
 }) {
-  const [count, setCount] = useState(0);
-  const [reported, setReported] = useState(false);
-  const isTimed = challenge.unit === 'seconds';
-  const [elapsed, setElapsed] = useState(0);
-  const [timing, setTiming] = useState(false);
-
-  useEffect(() => {
-    if (!timing || done) return;
-    const t = setInterval(() => setElapsed((e) => e + 1), 1000);
-    return () => clearInterval(t);
-  }, [timing, done]);
-
-  const progress = isTimed ? elapsed : count;
-  const finished = progress >= challenge.reps;
-
-  useEffect(() => {
-    if (finished && !reported) {
-      setReported(true);
-      send({ type: 'physical:done', runId: run.runId, reps: challenge.reps });
-    }
-  }, [finished, reported, run.runId, challenge.reps, send]);
+  const s = look === 'modern' ? modern : classic;
+  const [done, setDone] = useState(false);
+  const finish = () => {
+    if (done) return;
+    setDone(true);
+    send({ type: 'physical:done', runId: run.runId, reps: challenge.reps, clientId: getClientId() });
+    onFinished();
+  };
 
   return (
-    <View style={styles.block}>
-      <Label>Move</Label>
-      <Text style={styles.big}>
-        {challenge.reps}
-        <Text style={styles.unit}> {isTimed ? 's' : 'x'}</Text>
+    <View style={s.block}>
+      <Text testID="challenge-kind" style={s.kind}>
+        physical
       </Text>
-      <Text style={styles.exercise}>{challenge.exercise}</Text>
-      <Body muted>{challenge.motivation}</Body>
-
-      {finished ? (
-        <Text style={styles.finished}>Done. Reps logged.</Text>
-      ) : isTimed ? (
-        <View style={styles.row}>
-          <Text style={styles.counter}>
-            {elapsed}/{challenge.reps}s
-          </Text>
-          <Button label={timing ? 'Pause' : elapsed ? 'Resume' : 'Start timer'} onPress={() => setTiming((t) => !t)} />
-        </View>
-      ) : (
-        <View style={styles.row}>
-          <Text style={styles.counter}>
-            {count}/{challenge.reps}
-          </Text>
-          <Pressable
-            onPress={() => setCount((c) => Math.min(challenge.reps, c + 1))}
-            style={({ pressed }) => [styles.tap, pressed && { opacity: 0.7 }]}
-          >
-            <Text style={styles.tapText}>+1</Text>
-          </Pressable>
-          <Pressable onPress={() => setCount((c) => Math.min(challenge.reps, c + 5))} style={styles.tapSmall}>
-            <Text style={styles.tapSmallText}>+5</Text>
-          </Pressable>
-        </View>
-      )}
+      <Text style={s.kicker}>Move</Text>
+      <Text style={s.big}>
+        {challenge.reps}
+        {challenge.unit === 'seconds' ? 's' : 'x'}
+      </Text>
+      <Text style={s.exercise}>{challenge.exercise}</Text>
+      <Text style={s.body}>{challenge.motivation}</Text>
+      <Pressable testID="challenge-done" onPress={finish} disabled={done} style={s.done}>
+        <Text style={s.doneText}>{done ? 'Logged' : 'Done'}</Text>
+      </Pressable>
     </View>
   );
 }
@@ -111,96 +78,115 @@ function Quiz({
   challenge,
   send,
   result,
+  onFinished,
+  look,
 }: {
   run: PublicRunState;
   challenge: Extract<PublicChallenge, { kind: 'quiz' }>;
   send: Props['send'];
   result: Props['quizResult'];
+  onFinished: () => void;
+  look: Look;
 }) {
+  const s = look === 'modern' ? modern : classic;
   const [picked, setPicked] = useState<number | null>(null);
-  const revealed = run.status === 'done' && typeof run.quizAnswerIndex === 'number';
-  const answerIndex = revealed ? run.quizAnswerIndex : undefined;
-  const answered = picked !== null;
-  const myResult = result && result.runId === run.runId ? result.correct : null;
+  const mine = result && result.runId === run.runId ? result : null;
+  const fromAnswer = mine && typeof mine.answerIndex === 'number' ? mine.answerIndex : undefined;
+  const fromStop = run.status === 'done' && typeof run.quizAnswerIndex === 'number' ? run.quizAnswerIndex : undefined;
+  const revealIndex = fromAnswer ?? fromStop;
+  const show = revealIndex !== undefined;
 
   return (
-    <View style={styles.block}>
-      <Label>Quiz</Label>
-      <Text style={styles.question}>{challenge.question}</Text>
-      <View style={{ gap: spacing.sm }}>
+    <View style={s.block}>
+      <Text testID="challenge-kind" style={s.kind}>
+        quiz
+      </Text>
+      <Text style={s.kicker}>Trivia</Text>
+      <Text style={s.question}>{challenge.question}</Text>
+      <View style={s.options}>
         {challenge.options.map((opt, i) => {
           const isPicked = picked === i;
-          const isAnswer = answerIndex === i;
+          const isAnswer = revealIndex === i;
           return (
             <Pressable
               key={i}
-              disabled={answered}
+              testID={`option-${i}`}
+              disabled={picked !== null || run.status === 'done'}
               onPress={() => {
                 setPicked(i);
-                send({ type: 'quiz:answer', runId: run.runId, answerIndex: i });
+                send({ type: 'quiz:answer', runId: run.runId, answerIndex: i, clientId: getClientId() });
+                onFinished();
               }}
               style={[
-                styles.option,
-                isPicked && styles.optionPicked,
-                isPicked && myResult === true && styles.optionRight,
-                isPicked && myResult === false && styles.optionWrong,
-                revealed && isAnswer && styles.optionRight,
+                s.option,
+                isPicked && !show && s.optionPicked,
+                show && isAnswer && s.optionRight,
+                show && isPicked && !isAnswer && s.optionWrong,
               ]}
             >
-              <Text style={styles.optionText}>{opt}</Text>
+              <Text style={s.optionText}>{opt}</Text>
             </Pressable>
           );
         })}
       </View>
-      {answered && myResult !== null && (
-        <Text style={[styles.verdict, { color: myResult ? colors.success : colors.danger }]}>
-          {myResult ? 'Correct.' : 'Not quite.'}
-          {revealed ? '' : ' Explanation lands when the agent finishes.'}
-        </Text>
-      )}
-      {revealed && run.quizExplanation ? <Body muted>{run.quizExplanation}</Body> : null}
-      {!answered && run.status === 'done' && <Body muted>Agent finished before you answered. Next time.</Body>}
+      {show && run.quizExplanation ? <Text style={s.body}>{run.quizExplanation}</Text> : null}
+      {picked === null && run.status === 'done' ? (
+        <Text style={s.body}>The agent finished first. The answer is lit.</Text>
+      ) : null}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  loading: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.lg },
-  block: { gap: spacing.sm },
-  big: { color: colors.text, fontSize: 64, fontWeight: '800', lineHeight: 70 },
-  unit: { color: colors.muted, fontSize: 28, fontWeight: '600' },
-  exercise: { color: colors.text, fontSize: 22, fontWeight: '600' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.sm },
-  counter: { color: colors.text, fontSize: 22, fontWeight: '700', minWidth: 80 },
-  tap: {
-    flex: 1,
-    backgroundColor: colors.accent,
-    borderRadius: radius.md,
-    paddingVertical: 18,
-    alignItems: 'center',
-  },
-  tapText: { color: '#fff', fontSize: 22, fontWeight: '800' },
-  tapSmall: {
-    backgroundColor: colors.cardAlt,
-    borderRadius: radius.md,
-    paddingVertical: 18,
-    paddingHorizontal: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  tapSmallText: { color: colors.text, fontWeight: '700' },
-  finished: { color: colors.success, fontWeight: '700', marginTop: spacing.sm },
-  question: { color: colors.text, fontSize: 20, fontWeight: '600', lineHeight: 26 },
-  option: {
-    backgroundColor: colors.cardAlt,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  optionPicked: { borderColor: colors.accent },
-  optionRight: { borderColor: colors.success, backgroundColor: '#14352a' },
-  optionWrong: { borderColor: colors.danger, backgroundColor: '#3a1f1f' },
-  optionText: { color: colors.text, fontSize: 16 },
-  verdict: { fontWeight: '700' },
-});
+function face(look: Look) {
+  const classicLook = look === 'classic';
+  const font = classicLook ? pixel : modernFont;
+  return StyleSheet.create({
+    loading: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.md },
+    loadingText: { fontFamily: font, fontSize: classicLook ? 10 : 15, color: colors.ink, lineHeight: classicLook ? 18 : 22 },
+    block: { gap: spacing.sm },
+    kind: { position: 'absolute', width: 1, height: 1, opacity: 0 },
+    kicker: {
+      fontFamily: font,
+      fontSize: classicLook ? 10 : 13,
+      color: colors.muted,
+      lineHeight: classicLook ? 18 : 18,
+      letterSpacing: classicLook ? 0 : 0.4,
+    },
+    big: { fontFamily: font, fontSize: classicLook ? 28 : 40, color: colors.ink, lineHeight: classicLook ? 42 : 48 },
+    exercise: { fontFamily: font, fontSize: classicLook ? 13 : 20, color: colors.ink, lineHeight: classicLook ? 22 : 28 },
+    question: { fontFamily: font, fontSize: classicLook ? 11 : 17, color: colors.ink, lineHeight: classicLook ? 20 : 24 },
+    body: { fontFamily: font, fontSize: classicLook ? 9 : 14, color: colors.muted, lineHeight: classicLook ? 16 : 20 },
+    options: { gap: spacing.sm },
+    done: {
+      marginTop: spacing.sm,
+      minHeight: 48,
+      backgroundColor: colors.accent,
+      borderWidth: classicLook ? 4 : 0,
+      borderColor: colors.ink,
+      borderRadius: classicLook ? 0 : 14,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      boxShadow: classicLook ? '4px 4px 0 #1b1208' : '0 8px 16px rgba(27,18,8,0.12)',
+    },
+    doneText: { fontFamily: font, fontSize: classicLook ? 13 : 16, color: colors.ink, lineHeight: classicLook ? 22 : 22, fontWeight: classicLook ? '400' : '700' },
+    option: {
+      minHeight: 48,
+      backgroundColor: '#fff6d8',
+      borderRadius: classicLook ? 0 : 14,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      borderWidth: classicLook ? 4 : 1,
+      borderColor: classicLook ? colors.ink : 'rgba(27,18,8,0.16)',
+      justifyContent: 'center',
+    },
+    optionPicked: { backgroundColor: colors.accent },
+    optionRight: { backgroundColor: colors.correct, borderColor: colors.ink },
+    optionWrong: { backgroundColor: colors.wrong, borderColor: colors.ink },
+    optionText: { fontFamily: font, fontSize: classicLook ? 10 : 15, color: colors.ink, lineHeight: classicLook ? 18 : 22 },
+  });
+}
+
+const classic = face('classic');
+const modern = face('modern');

@@ -17,7 +17,7 @@ import { SqliteStore } from './db.ts';
 import { GrokClient } from './grok.ts';
 import { codesMatch, generateCode, pairingPageHtml, pairingQrText, publicBaseUrl } from './pairing.ts';
 import { PushSender, isExpoPushToken } from './push.ts';
-import { RunManager } from './runs.ts';
+import { RunManager, saneTimestamp } from './runs.ts';
 
 const PORT = Number(process.env.PORT ?? 80);
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -37,10 +37,10 @@ const push = new PushSender(store, fetch, (m) => app.log.warn(m));
 
 const sockets = new Set<WebSocket>();
 
-/** Strip the quiz answer while the run is live so the phone cannot peek. */
+/** Strip the quiz answer and explanation while the run is live so the phone cannot peek. */
 function publicRun(run: RunState): PublicRunState {
   if (run.challenge?.kind === 'quiz' && run.status === 'running') {
-    const { answerIndex: _hidden, ...rest } = run.challenge;
+    const { answerIndex: _hidden, explanation: _alsoHidden, ...rest } = run.challenge;
     return { ...run, challenge: rest };
   }
   return run;
@@ -105,7 +105,7 @@ app.post('/events', async (req, reply) => {
   if (!isHookEvent(body)) return reply.code(400).send({ error: 'invalid hook event' });
   const event: HookEvent = {
     ...body,
-    timestamp: typeof body.timestamp === 'number' ? body.timestamp : Date.now(),
+    timestamp: saneTimestamp(body.timestamp),
     payload: body.payload && typeof body.payload === 'object' ? body.payload : {},
   };
   runs.handle(event);
@@ -113,6 +113,8 @@ app.post('/events', async (req, reply) => {
 });
 
 app.get('/health', async () => ({ ok: true, grok: grok.enabled, run: runs.current?.status ?? 'idle' }));
+
+app.get('/today', async () => runs.today());
 
 app.get('/state', async (req, reply) => {
   const code = (req.query as { code?: string }).code;
@@ -143,7 +145,7 @@ app.get('/ws', { websocket: true }, (socket, req) => {
     return;
   }
   sockets.add(socket);
-  const hello: WsMessage = { type: 'hello', run: runs.current, stats: runs.stats() };
+  const hello: WsMessage = { type: 'hello', run: runs.current, stats: runs.stats(), today: runs.today() };
   socket.send(JSON.stringify({ ...hello, run: hello.run ? publicRun(hello.run) : null, mode: runs.mode }));
 
   socket.on('message', (raw) => {
@@ -154,14 +156,20 @@ app.get('/ws', { websocket: true }, (socket, req) => {
       return;
     }
     if (msg.type === 'quiz:answer') {
-      const correct = runs.answerQuiz(msg.runId, msg.answerIndex);
+      const correct = runs.answerQuiz(msg.runId, msg.answerIndex, msg.clientId);
       if (correct !== undefined) {
-        socket.send(JSON.stringify({ type: 'quiz:result', runId: msg.runId, correct }));
+        const challenge = runs.current?.challenge;
+        const answerIndex = challenge?.kind === 'quiz' ? challenge.answerIndex : undefined;
+        socket.send(JSON.stringify({ type: 'quiz:result', runId: msg.runId, correct, answerIndex }));
         broadcast({ type: 'stats', stats: runs.stats() });
+        broadcast({ type: 'today', today: runs.today() });
       }
     } else if (msg.type === 'physical:done') {
-      runs.completePhysical(msg.runId, msg.reps);
+      runs.completePhysical(msg.runId, msg.reps, msg.clientId);
       broadcast({ type: 'stats', stats: runs.stats() });
+      broadcast({ type: 'today', today: runs.today() });
+    } else if (msg.type === 'flip') {
+      runs.flip();
     } else if (msg.type === 'mode' && MODES.includes(msg.mode)) {
       runs.setMode(msg.mode);
       for (const ws of sockets) ws.send(JSON.stringify({ type: 'mode', mode: msg.mode }));
