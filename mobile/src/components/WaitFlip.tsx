@@ -1,13 +1,16 @@
-import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, type TextStyle } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View, type TextStyle } from 'react-native';
 import type { PublicRunState, TodayBoard } from '../../../shared/events';
-import { elapsedSeconds, playSession, type PlayPhase } from '../../../shared/session';
+import { elapsedSeconds, playSession, sinceStopSeconds, type PlayPhase } from '../../../shared/session';
 import type { useRelay } from '../useRelay';
 import { getClientId, type Look } from '../storage';
 import { colors, future, futureFont, pixel, spacing } from '../theme';
 import { ChallengeCard } from './ChallengeCard';
 
 type Relay = ReturnType<typeof useRelay>;
+
+/** Matches the coin's flight so the challenge appears as it lands. */
+const TOSS_MS = 1600;
 
 function fmt(total: number): string {
   const s = Math.max(0, Math.round(total));
@@ -37,18 +40,20 @@ function Runtime({
   look,
   session,
   elapsed,
+  sinceStop,
 }: {
   run: PublicRunState | null;
   look: Look;
   session: PlayPhase;
   elapsed: number;
+  sinceStop: number;
 }) {
   const s = look === 'modern' ? futureStyles : classic;
   const now = Date.now();
   const wave = (Math.sin(now / 220) + 1) / 2;
   const clock = session === 'idle' ? '--:--' : fmt(elapsed);
-  const classicLabel = session === 'live' ? 'Live' : session === 'stopped' ? 'Stop' : 'Idle';
-  const modernLabel = session === 'live' ? 'AGENT LIVE' : session === 'stopped' ? 'AGENT STOPPED' : 'STANDBY';
+  const classicLabel = session === 'live' ? 'Live' : session === 'stopped' ? 'Ran' : 'Idle';
+  const modernLabel = session === 'live' ? 'AGENT LIVE' : session === 'stopped' ? 'RAN' : 'STANDBY';
   const dot =
     session === 'stopped' ? future.magenta : session === 'live' ? future.cyan : future.muted;
   return (
@@ -59,52 +64,100 @@ function Runtime({
         ) : null}
         <Text style={s.topLabel}>{look === 'modern' ? modernLabel : classicLabel}</Text>
       </View>
-      <Text testID="runtime" style={s.topTime}>
-        {clock}
-      </Text>
+      <View style={s.clocks}>
+        <Text testID="runtime" style={s.topTime}>
+          {clock}
+        </Text>
+        {session === 'stopped' ? (
+          <Text testID="since-stop" style={s.since}>
+            {look === 'modern' ? `SINCE ${fmt(sinceStop)}` : `+${fmt(sinceStop)}`}
+          </Text>
+        ) : null}
+      </View>
     </View>
   );
 }
 
 function Coin({
   phase,
+  spinKey,
   face,
   look,
   dimmed,
+  canToss,
+  onToss,
 }: {
   phase: 'idle' | 'spin' | 'landed';
+  spinKey: string;
   face: 'physical' | 'quiz' | null;
   look: Look;
   dimmed: boolean;
+  canToss: boolean;
+  onToss: () => void;
 }) {
   const s = look === 'modern' ? futureStyles : classic;
-  const [tick, setTick] = useState(0);
+  const turn = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    if (phase !== 'spin') return;
-    const t = setInterval(() => setTick((n) => n + 1), 120);
-    return () => clearInterval(t);
-  }, [phase]);
-  const spinningFace = tick % 2 === 0 ? 'MOVE' : 'TRIVIA';
+    if (phase !== 'spin') {
+      turn.setValue(0);
+      return;
+    }
+    turn.setValue(0);
+    const flight = Animated.timing(turn, {
+      toValue: 1,
+      duration: TOSS_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    });
+    flight.start();
+    return () => flight.stop();
+  }, [phase, spinKey, turn]);
+
+  const rotateY = turn.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '1800deg'] });
+  const rotateYBack = turn.interpolate({ inputRange: [0, 1], outputRange: ['180deg', '1980deg'] });
+  const translateY = turn.interpolate({ inputRange: [0, 0.2, 0.55, 1], outputRange: [0, -24, -92, 0] });
+  const rotateX = turn.interpolate({ inputRange: [0, 0.22, 0.7, 1], outputRange: ['0deg', '24deg', '12deg', '0deg'] });
   const landed = face === 'quiz' ? 'TRIVIA' : 'MOVE';
-  const label = phase === 'spin' ? spinningFace : phase === 'landed' ? landed : 'FLIP';
-  const turn = phase === 'spin' ? `${(tick % 8) * 45}deg` : '0deg';
+  const front = phase === 'landed' ? landed : phase === 'spin' ? 'MOVE' : 'FLIP';
+  const back = phase === 'spin' ? 'TRIVIA' : front;
+
   return (
-    <View style={s.coinWrap}>
+    <Pressable
+      testID={canToss ? 'toss-again' : 'coin-press'}
+      disabled={!canToss}
+      onPress={onToss}
+      style={s.coinWrap}
+    >
       <Text testID="coin-phase" style={s.hidden}>
         {phase === 'idle' ? 'idle' : phase}
       </Text>
       {look === 'modern' ? <View pointerEvents="none" style={s.coinHalo} /> : null}
-      <View testID="coin" style={[s.coin, dimmed && s.coinDim, { transform: [{ rotateY: turn }] }]}>
-        <View style={s.coinInner}>
-          <Text testID="coin-face" style={s.coinText}>
-            {label}
-          </Text>
+      <Animated.View style={{ transform: [{ translateY }, { rotateX }] }}>
+        <View>
+          <Animated.View
+            testID="coin"
+            style={[s.coin, canToss && s.coinReady, dimmed && s.coinDim, { transform: [{ rotateY }], backfaceVisibility: 'hidden' }]}
+          >
+            <View style={s.coinInner}>
+              <Text testID="coin-face" style={s.coinText}>
+                {front}
+              </Text>
+            </View>
+          </Animated.View>
+          <Animated.View
+            pointerEvents="none"
+            style={[s.coin, s.coinBackFace, dimmed && s.coinDim, { transform: [{ rotateY: rotateYBack }], backfaceVisibility: 'hidden' }]}
+          >
+            <View style={s.coinInner}>
+              <Text style={s.coinText}>{back}</Text>
+            </View>
+          </Animated.View>
         </View>
-      </View>
+      </Animated.View>
       <Text testID="outcome" style={s.hidden}>
         {phase === 'landed' ? (face === 'quiz' ? 'quiz' : 'physical') : 'spinning'}
       </Text>
-    </View>
+    </Pressable>
   );
 }
 
@@ -192,8 +245,9 @@ export function WaitFlip({
   const s = look === 'modern' ? futureStyles : classic;
   const { run, quizResult, today, send } = relay;
   const session = playSession(run?.status);
-  const now = useClock(session === 'live');
+  const now = useClock(session !== 'idle');
   const elapsed = run ? elapsedSeconds(run, now) : 0;
+  const sinceStop = run ? sinceStopSeconds(run, now) : 0;
   const locked = session === 'stopped';
   const [spin, setSpin] = useState<'idle' | 'spin' | 'landed'>('idle');
   const [doneKey, setDoneKey] = useState<string | null>(null);
@@ -206,7 +260,7 @@ export function WaitFlip({
       return;
     }
     setSpin('spin');
-    const timer = setTimeout(() => setSpin('landed'), 1600);
+    const timer = setTimeout(() => setSpin('landed'), TOSS_MS);
     return () => clearTimeout(timer);
   }, [run?.runId, run?.challengeSeq, run?.status]);
 
@@ -218,6 +272,10 @@ export function WaitFlip({
         : null;
   const showChallenge = !!run?.challenge && spin === 'landed';
   const finished = doneKey === challengeKey && spin === 'landed' && session === 'live';
+  const toss = () => {
+    if (!finished) return;
+    send({ type: 'flip', clientId: getClientId() });
+  };
 
   return (
     <View style={s.sky} testID="screen" {...({ dataSet: { look } } as object)}>
@@ -235,7 +293,7 @@ export function WaitFlip({
       )}
       <View style={s.column}>
         <View style={s.header}>
-          <Runtime run={run} look={look} session={session} elapsed={elapsed} />
+          <Runtime run={run} look={look} session={session} elapsed={elapsed} sinceStop={sinceStop} />
           <Text testID="estimate" style={hintFor(look, session, run, elapsed) ? s.hint : s.hidden}>
             {hintFor(look, session, run, elapsed)}
           </Text>
@@ -264,14 +322,29 @@ export function WaitFlip({
           ) : null}
           {!run ? (
             <View style={s.play}>
-              {look === 'modern' ? <Coin phase="idle" face={null} look={look} dimmed={false} /> : null}
+              {look === 'modern' ? (
+                <Coin phase="idle" spinKey="idle" face={null} look={look} dimmed={false} canToss={false} onToss={() => undefined} />
+              ) : null}
               <Text testID="waiting" style={s.wait}>
                 {look === 'modern' ? 'LINK READY  ·  WAITING FOR A PROMPT' : 'Waiting for the agent to take off'}
               </Text>
             </View>
           ) : (
             <View style={s.play}>
-              <Coin phase={spin === 'idle' ? 'spin' : spin} face={face} look={look} dimmed={locked} />
+              <Coin
+                phase={spin === 'idle' ? 'spin' : spin}
+                spinKey={`${challengeKey}:${spin}`}
+                face={face}
+                look={look}
+                dimmed={locked}
+                canToss={finished}
+                onToss={toss}
+              />
+              {finished ? (
+                <Text testID="toss-hint" style={s.wait}>
+                  {look === 'modern' ? 'TAP THE COIN' : 'Tap the coin'}
+                </Text>
+              ) : null}
               {showChallenge ? (
                 <View style={s.card}>
                   <ChallengeCard
@@ -283,15 +356,6 @@ export function WaitFlip({
                     look={look}
                     locked={locked}
                   />
-                  {finished ? (
-                    <Pressable
-                      testID="toss-again"
-                      style={s.toss}
-                      onPress={() => send({ type: 'flip', clientId: getClientId() })}
-                    >
-                      <Text style={s.tossText}>Toss again</Text>
-                    </Pressable>
-                  ) : null}
                   {locked ? (
                     <View testID="agent-stopped" style={s.stopped}>
                       <Text style={s.stoppedKicker}>{look === 'modern' ? 'SESSION CLOSED' : 'Agent stopped'}</Text>
@@ -479,6 +543,14 @@ function sheet(look: Look) {
       fontWeight: classicLook ? '400' : '700',
       letterSpacing: classicLook ? 0 : 1,
     },
+    clocks: { alignItems: 'flex-end', justifyContent: 'center' },
+    since: {
+      fontFamily: font,
+      fontSize: classicLook ? 9 : 11,
+      color: classicLook ? colors.ink : future.magenta,
+      lineHeight: classicLook ? 16 : 16,
+      letterSpacing: classicLook ? 0 : 1.2,
+    },
     hint: {
       fontFamily: font,
       fontSize: classicLook ? 9 : 11,
@@ -568,6 +640,11 @@ function sheet(look: Look) {
       borderWidth: 1,
       borderColor: 'rgba(94,242,255,0.35)',
       boxShadow: '0 0 36px rgba(94,242,255,0.2)',
+    },
+    coinBackFace: { position: 'absolute', top: 0, left: 0 },
+    coinReady: {
+      borderColor: classicLook ? colors.goldDeep : future.magenta,
+      boxShadow: classicLook ? '6px 6px 0 #1b1208' : '0 0 28px rgba(255,79,216,0.55)',
     },
     coin: {
       width: classicLook ? 116 : 128,

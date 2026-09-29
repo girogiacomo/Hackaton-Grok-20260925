@@ -21,3 +21,12 @@ export function elapsedSeconds(
   const end = run.status === 'done' ? (run.endedAt ?? now) : now;
   return Math.max(0, (end - run.startedAt) / 1000);
 }
+
+/** Seconds after the agent stopped. Stays at 0 while the run is still live. */
+export function sinceStopSeconds(
+  run: { status: AgentStatus; endedAt?: number },
+  now: number,
+): number {
+  if (run.status !== 'done') return 0;
+  return Math.max(0, (now - (run.endedAt ?? now)) / 1000);
+}

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { elapsedSeconds, playSession } from '../../shared/session.ts';
+import { elapsedSeconds, playSession, sinceStopSeconds } from '../../shared/session.ts';
 
 test('play session stays open until the agent stops', () => {
   assert.equal(playSession(undefined), 'idle');
@@ -16,4 +16,6 @@ test('elapsed clock ignores the estimate and freezes when the agent stops', () =
 
   const stopped = { status: 'done' as const, startedAt, endedAt: startedAt + 40_000 };
   assert.equal(elapsedSeconds(stopped, startedAt + 120_000), 40);
+  assert.equal(sinceStopSeconds(running, startedAt + 120_000), 0);
+  assert.equal(sinceStopSeconds(stopped, startedAt + 120_000), 80);
 });
