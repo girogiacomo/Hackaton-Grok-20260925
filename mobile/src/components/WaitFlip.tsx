@@ -160,9 +160,9 @@ export function WaitFlip({
     <View style={s.sky} testID="screen" dataSet={{ look }}>
       {look === 'classic' ? (
         <View pointerEvents="none" style={s.cloudLayer}>
-          <View style={[s.cloud, { top: 28, left: 12 }]} />
-          <View style={[s.cloud, { top: 92, right: 18, width: 84 }]} />
-          <View style={[s.cloud, { top: 150, left: 36, width: 56 }]} />
+          <Cloud top={18} left={8} />
+          <Cloud top={108} right={6} scale={0.72} />
+          <Cloud top={168} left={28} scale={0.55} />
         </View>
       ) : null}
       <View style={s.column}>
@@ -220,21 +220,68 @@ export function WaitFlip({
   );
 }
 
+/** Overlapping bumps with one shared outline, so the sky decoration is a cloud. */
+function Cloud({
+  top,
+  left,
+  right,
+  scale = 1,
+}: {
+  top: number;
+  left?: number;
+  right?: number;
+  scale?: number;
+}) {
+  const bumps = [
+    { left: 8, bottom: 16, size: 46 },
+    { left: 34, bottom: 28, size: 58 },
+    { left: 78, bottom: 18, size: 42 },
+    { left: 18, bottom: 2, size: 96, height: 38 },
+  ];
+  return (
+    <View pointerEvents="none" style={[cloudStyles.cluster, { top, left, right, transform: [{ scale }] }]}>
+      {bumps.map((bump, index) => (
+        <View
+          key={`ink-${index}`}
+          style={{
+            position: 'absolute',
+            left: bump.left - 3,
+            bottom: bump.bottom - 3,
+            width: bump.size + 6,
+            height: (bump.height ?? bump.size) + 6,
+            borderRadius: 999,
+            backgroundColor: colors.ink,
+          }}
+        />
+      ))}
+      {bumps.map((bump, index) => (
+        <View
+          key={`fill-${index}`}
+          style={{
+            position: 'absolute',
+            left: bump.left,
+            bottom: bump.bottom,
+            width: bump.size,
+            height: bump.height ?? bump.size,
+            borderRadius: 999,
+            backgroundColor: colors.cloud,
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
+const cloudStyles = StyleSheet.create({
+  cluster: { position: 'absolute', width: 140, height: 96 },
+});
+
 function sheet(look: Look) {
   const classicLook = look === 'classic';
   const font = classicLook ? pixel : modernFont;
   return StyleSheet.create({
     sky: { flex: 1, backgroundColor: colors.sky },
     cloudLayer: { ...StyleSheet.absoluteFillObject, zIndex: 0 },
-    cloud: {
-      position: 'absolute',
-      width: 108,
-      height: 32,
-      backgroundColor: colors.cloud,
-      borderRadius: 20,
-      borderWidth: 3,
-      borderColor: colors.ink,
-    },
     column: { flex: 1, width: '100%', maxWidth: 520, alignSelf: 'center', zIndex: 1 },
     header: { paddingHorizontal: 12, paddingTop: 8, gap: 8, zIndex: 2 },
     scroll: { flex: 1 },
