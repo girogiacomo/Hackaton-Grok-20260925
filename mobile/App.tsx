@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { colors } from './src/theme';
+import { colors, future } from './src/theme';
 import { loadLook, loadPairing, saveLook, savePairing, type Look, type Pairing } from './src/storage';
 import { useRelay } from './src/useRelay';
 import { PairScreen } from './src/screens/PairScreen';
@@ -13,9 +13,10 @@ function webPair(): Pairing | null {
   return { url: window.location.origin, code: '897760' };
 }
 
-function usePixelFont(): void {
+function useWebChrome(look: Look): void {
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const bg = look === 'modern' ? future.void : '#4ec0ca';
     const style = document.createElement('style');
     style.textContent = `
       @font-face {
@@ -23,19 +24,23 @@ function usePixelFont(): void {
         src: url('/PressStart2P-Regular.ttf') format('truetype');
         font-display: swap;
       }
-      html, body, #root { background: #4ec0ca; height: 100%; }
+      html, body, #root { background: ${bg}; height: 100%; }
       [data-look="classic"], [data-look="classic"] * {
         font-family: PressStart2P, monospace !important;
       }
+      [data-look="modern"], [data-look="modern"] * {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+      }
     `;
     document.head.appendChild(style);
-  }, []);
+    return () => style.remove();
+  }, [look]);
 }
 
 export default function App() {
-  usePixelFont();
-  const [pairing, setPairing] = useState<Pairing | null>(null);
   const [look, setLook] = useState<Look>('classic');
+  useWebChrome(look);
+  const [pairing, setPairing] = useState<Pairing | null>(null);
   const [loaded, setLoaded] = useState(false);
   const relay = useRelay(pairing);
 
@@ -67,10 +72,12 @@ export default function App() {
     screen = <WaitFlip relay={relay} look={look} onLook={onLook} />;
   }
 
+  const hud = loaded && !!pairing && look === 'modern';
+
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={styles.root} edges={['top', 'left', 'right', 'bottom']}>
-        <StatusBar style="dark" />
+      <SafeAreaView style={[styles.root, { backgroundColor: hud ? future.void : colors.sky }]} edges={['top', 'left', 'right', 'bottom']}>
+        <StatusBar style={hud ? 'light' : 'dark'} />
         {screen}
       </SafeAreaView>
     </SafeAreaProvider>

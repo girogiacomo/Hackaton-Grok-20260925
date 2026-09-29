@@ -21,9 +21,24 @@ export const colors = {
   ink: '#1b1208',
 };
 
-/** Single-word family so React Native Web does not emit an unquoted, dropped font. */
+/** Families without spaces so React Native Web does not drop the font. */
 export const pixel = 'PressStart2P, monospace';
 export const modernFont = 'ui-sans-serif, system-ui, sans-serif';
+export const futureFont = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+
+export const future = {
+  void: '#050814',
+  panel: 'rgba(8, 16, 32, 0.78)',
+  panelSolid: '#0c1628',
+  line: 'rgba(94, 242, 255, 0.42)',
+  cyan: '#5ef2ff',
+  magenta: '#ff4fd8',
+  text: '#e7f6ff',
+  muted: '#8ea6c2',
+  good: '#3dffb0',
+  danger: '#ff5d7a',
+  amber: '#ffc857',
+};
 
 export const spacing = {
   xs: 4,

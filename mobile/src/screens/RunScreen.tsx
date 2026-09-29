@@ -70,7 +70,14 @@ export function RunScreen({ run, quizResult, send, onDismiss }: Props) {
       )}
 
       <Card>
-        <ChallengeCard run={run} quizResult={quizResult} send={send} />
+        <ChallengeCard
+          run={run}
+          quizResult={quizResult}
+          send={send}
+          onFinished={() => undefined}
+          look="classic"
+          locked={run.status === 'done'}
+        />
       </Card>
     </ScrollView>
   );
