@@ -17,7 +17,7 @@ import { SqliteStore } from './db.ts';
 import { GrokClient } from './grok.ts';
 import { codesMatch, generateCode, pairingPageHtml, pairingQrText, publicBaseUrl } from './pairing.ts';
 import { PushSender, isExpoPushToken } from './push.ts';
-import { RunManager } from './runs.ts';
+import { RunManager, saneTimestamp } from './runs.ts';
 
 const PORT = Number(process.env.PORT ?? 4747);
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -105,7 +105,7 @@ app.post('/events', async (req, reply) => {
   if (!isHookEvent(body)) return reply.code(400).send({ error: 'invalid hook event' });
   const event: HookEvent = {
     ...body,
-    timestamp: typeof body.timestamp === 'number' ? body.timestamp : Date.now(),
+    timestamp: saneTimestamp(body.timestamp),
     payload: body.payload && typeof body.payload === 'object' ? body.payload : {},
   };
   runs.handle(event);

@@ -7,6 +7,22 @@ export interface Pairing {
 
 const KEY = 'sidequest.pairing';
 const CLIENT_KEY = 'waitflip.client';
+const LOOK_KEY = 'waitflip.look';
+
+export type Look = 'classic' | 'modern';
+
+export async function loadLook(): Promise<Look> {
+  try {
+    const value = await AsyncStorage.getItem(LOOK_KEY);
+    return value === 'modern' ? 'modern' : 'classic';
+  } catch {
+    return 'classic';
+  }
+}
+
+export async function saveLook(look: Look): Promise<void> {
+  await AsyncStorage.setItem(LOOK_KEY, look);
+}
 
 /** Stable id for this browser so two phones both count on the shared chart. */
 export function getClientId(): string {

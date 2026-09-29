@@ -31,6 +31,13 @@ export interface RunManagerEvents {
 }
 
 /** Rolling median of the last N completed runs of a project, clamped. */
+/** Hook clocks are epoch milliseconds. A bogus stamp must not poison the ETA. */
+export function saneTimestamp(ts: unknown, now = Date.now()): number {
+  if (typeof ts !== 'number' || !Number.isFinite(ts)) return now;
+  if (Math.abs(ts - now) > 86_400_000) return now;
+  return ts;
+}
+
 export function predictSeconds(durations: number[]): number {
   const usable = durations.filter((d) => Number.isFinite(d) && d > 0);
   if (usable.length === 0) return DEFAULT_PREDICTION_SECONDS;

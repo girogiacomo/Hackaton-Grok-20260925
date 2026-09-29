@@ -21,7 +21,9 @@ export const colors = {
   ink: '#1b1208',
 };
 
-export const pixel = 'Press Start 2P';
+/** Single-word family so React Native Web does not emit an unquoted, dropped font. */
+export const pixel = 'PressStart2P, monospace';
+export const modernFont = 'ui-sans-serif, system-ui, sans-serif';
 
 export const spacing = {
   xs: 4,
