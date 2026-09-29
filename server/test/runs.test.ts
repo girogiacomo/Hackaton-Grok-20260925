@@ -31,8 +31,13 @@ function fakeContent(): ContentProvider & { progressCalls: number } {
   return provider;
 }
 
-function ev(event: HookEvent['event'], payload: Record<string, unknown> = {}, timestamp = Date.now()): HookEvent {
-  return { event, project: 'demo', timestamp, payload };
+function ev(
+  event: HookEvent['event'],
+  payload: Record<string, unknown> = {},
+  timestamp = Date.now(),
+  conversationId?: string,
+): HookEvent {
+  return { event, project: 'demo', timestamp, payload, conversationId };
 }
 
 const tick = () => new Promise((r) => setImmediate(r));
@@ -129,6 +134,34 @@ test('stop without a running run and stray events are ignored', () => {
   manager.handle(ev('postToolUse'));
   assert.equal(fired, 0);
   assert.equal(manager.current, null);
+});
+
+test('one of two parallel agents finishing does not end the wait', () => {
+  const manager = new RunManager(new MemoryStore(), fakeContent());
+  const t0 = 1_700_000_000_000;
+  let dones = 0;
+  manager.on('done', () => dones++);
+  manager.handle(ev('beforeSubmitPrompt', { prompt: 'first' }, t0, 'chat-a'));
+  const id = manager.current?.runId;
+  const started = manager.current?.startedAt;
+  manager.handle(ev('beforeSubmitPrompt', { prompt: 'second' }, t0 + 5_000, 'chat-b'));
+  assert.equal(manager.current?.runId, id);
+  assert.equal(manager.current?.startedAt, started);
+  assert.equal(manager.current?.activeAgents, 2);
+
+  manager.handle(ev('stop', { status: 'completed' }, t0 + 20_000, 'chat-b'));
+  assert.equal(dones, 0);
+  assert.equal(manager.current?.status, 'running');
+  assert.equal(manager.current?.endedAt, undefined);
+  assert.equal(manager.current?.activeAgents, 1);
+  assert.equal(manager.current?.agentPulse, 1);
+  assert.match(manager.current?.agentNote ?? '', /still running/);
+
+  manager.handle(ev('stop', { status: 'completed' }, t0 + 50_000, 'chat-a'));
+  assert.equal(dones, 1);
+  assert.equal(manager.current?.status, 'done');
+  assert.equal(manager.current?.endedAt, t0 + 50_000);
+  assert.equal(manager.current?.activeAgents, 0);
 });
 
 test('follow-up prompt during a run extends it instead of restarting', () => {

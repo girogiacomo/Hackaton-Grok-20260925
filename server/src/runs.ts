@@ -55,12 +55,13 @@ function str(v: unknown): string | undefined {
 }
 
 /**
- * Turns raw hook events into a single live `RunState` and emits
- * start/progress/done. Only one run is tracked at a time: Sidequest is about
- * the human's wait, and the human waits for one thing.
+ * Turns raw hook events into one human wait. Several agents can share that
+ * wait: the clock and the challenge stay up until the last of them stops.
  */
 export class RunManager extends EventEmitter<RunManagerEvents> {
   private run: RunState | null = null;
+  /** Conversation ids still working. An empty string is a hook with no id. */
+  private agents = new Map<string, true>();
   private thoughts: string[] = [];
   private thoughtCount = 0;
   private summarising = false;
@@ -104,11 +105,31 @@ export class RunManager extends EventEmitter<RunManagerEvents> {
     }
   }
 
+  private conversationKey(event: HookEvent): string {
+    return event.conversationId && event.conversationId.length > 0 ? event.conversationId : '';
+  }
+
+  /** Events with no id belong to the wait when only one agent is in it. */
+  private belongs(event: HookEvent): boolean {
+    if (!this.run || this.run.status !== 'running') return false;
+    const key = this.conversationKey(event);
+    if (!key) return this.agents.size > 0;
+    return this.agents.has(key);
+  }
+
   private onStart(event: HookEvent): void {
     const prompt = str(event.payload.prompt) ?? '';
+    const key = this.conversationKey(event);
     if (this.run && this.run.status === 'running') {
-      // Follow-up prompt while the agent is still busy: extend the same wait.
+      if (this.agents.has(key)) {
+        // Same chat, follow-up prompt: extend this wait, do not add an agent.
+        this.run.prompt = prompt || this.run.prompt;
+        this.emit('progress', this.run);
+        return;
+      }
+      this.agents.set(key, true);
       this.run.prompt = prompt || this.run.prompt;
+      this.run.activeAgents = this.agents.size;
       this.emit('progress', this.run);
       return;
     }
@@ -124,7 +145,10 @@ export class RunManager extends EventEmitter<RunManagerEvents> {
       ),
       toolCalls: 0,
       editedFiles: [],
+      activeAgents: 1,
     };
+    this.agents.clear();
+    this.agents.set(key, true);
     this.run = run;
     this.thoughts = [];
     this.thoughtCount = 0;
@@ -161,14 +185,14 @@ export class RunManager extends EventEmitter<RunManagerEvents> {
       .catch(() => undefined);
   }
 
-  private onToolUse(_event: HookEvent): void {
-    if (!this.run || this.run.status !== 'running') return;
+  private onToolUse(event: HookEvent): void {
+    if (!this.belongs(event) || !this.run) return;
     this.run.toolCalls += 1;
     this.emit('progress', this.run);
   }
 
   private onFileEdit(event: HookEvent): void {
-    if (!this.run || this.run.status !== 'running') return;
+    if (!this.belongs(event) || !this.run) return;
     const file = str(event.payload.file_path) ?? str(event.payload.filePath);
     if (file && !this.run.editedFiles.includes(file)) {
       this.run.editedFiles.push(file);
@@ -178,7 +202,7 @@ export class RunManager extends EventEmitter<RunManagerEvents> {
   }
 
   private onThought(event: HookEvent): void {
-    if (!this.run || this.run.status !== 'running') return;
+    if (!this.belongs(event) || !this.run) return;
     const text = str(event.payload.text) ?? str(event.payload.thought);
     if (!text) return;
     this.thoughts.push(text);
@@ -205,6 +229,25 @@ export class RunManager extends EventEmitter<RunManagerEvents> {
   private onStop(event: HookEvent): void {
     const run = this.run;
     if (!run || run.status !== 'running') return;
+    let key = this.conversationKey(event);
+    if (!key) {
+      if (this.agents.size !== 1) return;
+      key = [...this.agents.keys()][0];
+    }
+    if (!this.agents.has(key)) return;
+    this.agents.delete(key);
+    if (this.agents.size > 0) {
+      const left = this.agents.size;
+      run.activeAgents = left;
+      run.agentPulse = (run.agentPulse ?? 0) + 1;
+      run.agentNote = left === 1
+        ? 'One agent finished · 1 still running'
+        : `One agent finished · ${left} still running`;
+      this.emit('progress', run);
+      return;
+    }
+    run.activeAgents = 0;
+    run.agentNote = undefined;
     run.status = 'done';
     run.endedAt = event.timestamp || Date.now();
     if (run.challenge?.kind === 'quiz') {

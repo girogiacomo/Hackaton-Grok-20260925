@@ -35,34 +35,47 @@ function hintFor(look: Look, session: PlayPhase, run: PublicRunState | null, ela
   return past ? 'past est' : `est ${fmt(run.predictedSeconds)}`;
 }
 
+function agentLabel(look: Look, session: PlayPhase, count: number): string {
+  if (session === 'stopped') return look === 'modern' ? 'RAN' : 'Ran';
+  if (session !== 'live') return look === 'modern' ? 'STANDBY' : 'Idle';
+  if (look === 'modern') return count === 1 ? '1 AGENT' : `${count} AGENTS`;
+  return count === 1 ? '1 live' : `${count} live`;
+}
+
 function Runtime({
   run,
   look,
   session,
   elapsed,
   sinceStop,
+  flash,
 }: {
   run: PublicRunState | null;
   look: Look;
   session: PlayPhase;
   elapsed: number;
   sinceStop: number;
+  flash: boolean;
 }) {
   const s = look === 'modern' ? futureStyles : classic;
   const now = Date.now();
   const wave = (Math.sin(now / 220) + 1) / 2;
   const clock = session === 'idle' ? '--:--' : fmt(elapsed);
-  const classicLabel = session === 'live' ? 'Live' : session === 'stopped' ? 'Ran' : 'Idle';
-  const modernLabel = session === 'live' ? 'AGENT LIVE' : session === 'stopped' ? 'RAN' : 'STANDBY';
+  const count = run?.activeAgents ?? (session === 'live' ? 1 : 0);
   const dot =
-    session === 'stopped' ? future.magenta : session === 'live' ? future.cyan : future.muted;
+    flash ? future.magenta : session === 'stopped' ? future.muted : session === 'live' ? future.cyan : future.muted;
   return (
-    <View style={s.topBar} testID="runtime-bar">
+    <View
+      style={[s.topBar, session === 'live' ? s.topBarLive : s.topBarIdle, flash && s.topBarFlash]}
+      testID="runtime-bar"
+    >
       <View style={s.liveRow}>
         {look === 'modern' ? (
           <View style={[s.pulse, { backgroundColor: dot, opacity: session === 'live' ? 0.4 + wave * 0.6 : 1 }]} />
         ) : null}
-        <Text style={s.topLabel}>{look === 'modern' ? modernLabel : classicLabel}</Text>
+        <Text testID="agent-count" style={[s.topLabel, session !== 'live' && s.topLabelIdle]}>
+          {agentLabel(look, session, count)}
+        </Text>
       </View>
       <View style={s.clocks}>
         <Text testID="runtime" style={s.topTime}>
@@ -249,6 +262,13 @@ export function WaitFlip({
   const elapsed = run ? elapsedSeconds(run, now) : 0;
   const sinceStop = run ? sinceStopSeconds(run, now) : 0;
   const locked = session === 'stopped';
+  const [flash, setFlash] = useState(false);
+  useEffect(() => {
+    if (!run?.agentPulse) return;
+    setFlash(true);
+    const t = setTimeout(() => setFlash(false), 1600);
+    return () => clearTimeout(t);
+  }, [run?.runId, run?.agentPulse]);
   const [spin, setSpin] = useState<'idle' | 'spin' | 'landed'>('idle');
   const [doneKey, setDoneKey] = useState<string | null>(null);
   const seq = run?.challengeSeq ?? 0;
@@ -293,7 +313,12 @@ export function WaitFlip({
       )}
       <View style={s.column}>
         <View style={s.header}>
-          <Runtime run={run} look={look} session={session} elapsed={elapsed} sinceStop={sinceStop} />
+          <Runtime run={run} look={look} session={session} elapsed={elapsed} sinceStop={sinceStop} flash={flash} />
+          {session === 'live' && run?.agentNote ? (
+            <Text testID="agent-notice" style={[s.notice, flash && s.noticeOn]}>
+              {run.agentNote}
+            </Text>
+          ) : null}
           <Text testID="estimate" style={hintFor(look, session, run, elapsed) ? s.hint : s.hidden}>
             {hintFor(look, session, run, elapsed)}
           </Text>
@@ -526,6 +551,27 @@ function sheet(look: Look) {
       minHeight: 52,
       boxShadow: classicLook ? '4px 4px 0 #1b1208' : '0 0 24px rgba(94,242,255,0.12)',
     },
+    topBarLive: {
+      backgroundColor: classicLook ? '#ffe56a' : '#123044',
+      borderColor: classicLook ? colors.ink : future.cyan,
+    },
+    topBarIdle: {
+      backgroundColor: classicLook ? colors.card : 'rgba(8,16,32,0.72)',
+      borderColor: classicLook ? colors.ink : 'rgba(142,166,194,0.35)',
+    },
+    topBarFlash: {
+      backgroundColor: classicLook ? '#ffb4a8' : 'rgba(255,79,216,0.42)',
+      borderColor: classicLook ? colors.ink : future.magenta,
+    },
+    topLabelIdle: { color: classicLook ? colors.muted : future.muted },
+    notice: {
+      fontFamily: font,
+      fontSize: classicLook ? 9 : 12,
+      color: classicLook ? colors.ink : future.magenta,
+      lineHeight: classicLook ? 16 : 18,
+      textAlign: 'center',
+    },
+    noticeOn: { color: classicLook ? colors.ink : '#ffe56a' },
     liveRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     pulse: { width: 8, height: 8, borderRadius: 4, boxShadow: '0 0 10px rgba(94,242,255,0.8)' },
     topLabel: {

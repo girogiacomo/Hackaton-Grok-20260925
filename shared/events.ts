@@ -75,6 +75,12 @@ export interface RunState {
   coin?: 'physical' | 'quiz';
   /** Increments every toss so the phone can replay the flip. */
   challengeSeq?: number;
+  /** Agents still working in this wait. Parallel chats share one clock. */
+  activeAgents?: number;
+  /** Bumps when one agent finishes while others are still running, so the phone can flash. */
+  agentPulse?: number;
+  /** Short line for that flash, e.g. one finished and one is still going. */
+  agentNote?: string;
 }
 
 export interface TodayBoard {
