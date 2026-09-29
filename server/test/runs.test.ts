@@ -57,8 +57,9 @@ test('scaleExercise stays within sane bounds', () => {
   for (const ex of EXERCISES) {
     for (const s of [30, 90, 300, 900]) {
       const n = scaleExercise(ex, s);
+      const floor = ex.min ?? (ex.unit === 'reps' ? 5 : 20);
       assert.ok(n <= ex.max, `${ex.name} ${s}s -> ${n} > max`);
-      assert.ok(n >= (ex.unit === 'reps' ? 5 : 20));
+      assert.ok(n >= floor, `${ex.name} ${s}s -> ${n} < min ${floor}`);
     }
   }
   assert.ok(scaleExercise(EXERCISES[0], 300) > scaleExercise(EXERCISES[0], 60));

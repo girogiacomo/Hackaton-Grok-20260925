@@ -59,6 +59,17 @@ test('quiz uses Grok JSON when valid and falls back otherwise', async () => {
   assert.ok(FALLBACK_QUIZZES.some((f) => f.question === (fb as { question: string }).question));
 });
 
+test('another toss of the same run can pick a different challenge', async () => {
+  const grok = new GrokClient({ apiKey: undefined, fetchImpl: fakeFetch(() => chat('x')) });
+  const provider = new GrokContentProvider(grok);
+  const names = new Set<string>();
+  for (let challengeSeq = 0; challengeSeq < 12; challengeSeq++) {
+    const c = await provider.challenge(run({ runId: 'same-run', challengeSeq }), 'physical');
+    if (c.kind === 'physical') names.add(c.exercise);
+  }
+  assert.ok(names.size > 1, `expected variety, got ${[...names].join(', ')}`);
+});
+
 test('physical challenge keeps deterministic exercise, Grok only writes the line', async () => {
   const grok = new GrokClient({ apiKey: 'k', fetchImpl: fakeFetch(() => chat('"Move it."')) });
   const c = await new GrokContentProvider(grok).challenge(run(), 'physical');
