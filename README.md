@@ -38,15 +38,15 @@ cp .env.example .env      # add XAI_API_KEY for Grok content (optional)
 npm start
 ```
 
-The relay prints a QR code, its LAN URL (e.g. `http://192.168.1.20:4747`) and a 6-digit pairing code. `GET /pair-qr` serves the same QR as a web page. Set `PAIR_CODE=123456` in `.env` to keep the code stable across restarts.
+The relay always listens on port 80. It prints a QR code, its LAN URL (e.g. `http://10.0.0.215`) and a 6-digit pairing code. `GET /pair-qr` serves the same QR as a web page. Set `PAIR_CODE=123456` in `.env` to keep the code stable across restarts. Binding to port 80 needs root, or `setcap cap_net_bind_service=+ep` on the node binary.
 
-The URL is the first non-loopback IPv4 of the machine. If it is not the address your phone can reach (VPN, Docker/VM, several adapters), set `PUBLIC_URL=http://<your-wifi-ip>:4747` in `.env`; find the IP with `ip -4 addr` / `ipconfig`. Check from the phone's browser: `http://<ip>:4747/health` must return `{"ok":true,...}` before pairing.
+The URL is the first non-loopback IPv4 of the machine. If it is not the address your phone can reach (VPN, Docker/VM, several adapters), set `PUBLIC_URL=http://<your-ip>` in `.env`; find the IP with `ip -4 addr` / `ipconfig`. Check from the phone's browser: `http://<ip>/health` must return `{"ok":true,...}` before pairing.
 
 ### 2. Cursor hook
 
 ```bash
 ./hooks/install.sh                        # relay on this machine
-./hooks/install.sh http://192.168.1.20:4747   # relay elsewhere
+./hooks/install.sh http://10.0.0.215   # relay elsewhere, always port 80
 ```
 
 This copies `sidequest.sh` to `~/.cursor/hooks/`, writes `~/.cursor/sidequest.env` with the relay URL, and merges the five Sidequest entries into `~/.cursor/hooks.json` (existing hooks are preserved). Cursor reloads `hooks.json` on save; check the **Hooks** output channel if events do not show up.

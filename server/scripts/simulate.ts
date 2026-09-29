@@ -2,13 +2,13 @@
  * Replays a fake Cursor agent run against a running relay, for demos and
  * for developing the phone app without Cursor in the loop.
  *
- *   npm run simulate                # ~25s run against http://127.0.0.1:4747
+ *   npm run simulate                # ~25s run against http://127.0.0.1:80
  *   npm run simulate -- 60          # 60s run
- *   SIDEQUEST_URL=http://host:4747 npm run simulate
+ *   SIDEQUEST_URL=http://host npm run simulate
  */
 import type { HookEvent, HookEventName } from '../../shared/events.ts';
 
-const url = (process.env.SIDEQUEST_URL ?? 'http://127.0.0.1:4747').replace(/\/$/, '');
+const url = (process.env.SIDEQUEST_URL ?? 'http://127.0.0.1:80').replace(/\/$/, '');
 const totalSeconds = Number(process.argv[2] ?? 25);
 const project = process.env.SIDEQUEST_PROJECT ?? 'demo-app';
 

@@ -19,7 +19,7 @@ import { codesMatch, generateCode, pairingPageHtml, pairingQrText, publicBaseUrl
 import { PushSender, isExpoPushToken } from './push.ts';
 import { RunManager } from './runs.ts';
 
-const PORT = Number(process.env.PORT ?? 4747);
+const PORT = Number(process.env.PORT ?? 80);
 const HOST = process.env.HOST ?? '0.0.0.0';
 const DB_PATH = process.env.SIDEQUEST_DB ?? 'sidequest.db';
 const PAIR_CODE = process.env.PAIR_CODE ?? generateCode();

@@ -109,7 +109,7 @@ export function PairScreen({ onPaired }: Props) {
           <Text style={styles.or}>or</Text>
           <TextInput
             style={styles.input}
-            placeholder="192.168.1.20:4747"
+            placeholder="10.0.0.215"
             placeholderTextColor={colors.muted}
             autoCapitalize="none"
             autoCorrect={false}

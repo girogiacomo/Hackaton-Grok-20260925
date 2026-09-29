@@ -17,7 +17,7 @@ if [[ -z "${SIDEQUEST_URL:-}" && -f "$HOME/.cursor/sidequest.env" ]]; then
   # shellcheck disable=SC1091
   source "$HOME/.cursor/sidequest.env"
 fi
-SIDEQUEST_URL="${SIDEQUEST_URL:-http://127.0.0.1:4747}"
+SIDEQUEST_URL="${SIDEQUEST_URL:-http://127.0.0.1:80}"
 
 if command -v jq >/dev/null 2>&1; then
   PROJECT="$(printf '%s' "$INPUT" | jq -r '(.workspace_roots[0] // .cwd // "") | split("/") | last // ""' 2>/dev/null)"

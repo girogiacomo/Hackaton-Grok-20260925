@@ -10,7 +10,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CURSOR_DIR="${CURSOR_DIR:-$HOME/.cursor}"
-RELAY_URL="${1:-${SIDEQUEST_URL:-http://127.0.0.1:4747}}"
+RELAY_URL="${1:-${SIDEQUEST_URL:-http://127.0.0.1:80}}"
 
 for bin in curl jq; do
   if ! command -v "$bin" >/dev/null 2>&1; then

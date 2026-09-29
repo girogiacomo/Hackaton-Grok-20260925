@@ -29,7 +29,7 @@ export async function clearPairing(): Promise<void> {
   await AsyncStorage.removeItem(KEY);
 }
 
-/** Normalises user input like "192.168.1.5:4747" into a full http URL. */
+/** Normalises user input like "10.0.0.215" into a full http URL on port 80. */
 export function normaliseUrl(input: string): string {
   let url = input.trim().replace(/\/$/, '');
   if (!/^https?:\/\//i.test(url)) url = `http://${url}`;
